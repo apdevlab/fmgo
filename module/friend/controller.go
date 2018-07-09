@@ -4,6 +4,7 @@ import (
 	"fmgo/common/data"
 	"fmgo/common/data/model"
 	"fmgo/module/friend/request"
+	"fmgo/module/friend/response"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -34,7 +35,6 @@ func (ctrl *Controller) Connect(c *gin.Context) {
 		ve, ok := err.(validator.ValidationErrors)
 		if ok {
 			for _, v := range ve {
-				glog.Infof("Validation: %+v", v)
 				msg := fmt.Sprintf("%s is %s", v.Field, v.Tag)
 				if v.Tag == "len" {
 					msg = fmt.Sprintf("%s %s should be %s", v.Field, v.Tag, v.Param)
@@ -117,4 +117,54 @@ func (ctrl *Controller) Connect(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// GetFriends action to get friend list for given email address
+func (ctrl *Controller) GetFriends(c *gin.Context) {
+	// deserialize and validate POST data
+	var req request.GetFriendRequests
+	var errors []string
+	if err := c.ShouldBindWith(&req, binding.JSON); err != nil {
+		ve, ok := err.(validator.ValidationErrors)
+		if ok {
+			for _, v := range ve {
+				msg := fmt.Sprintf("%s is %s", v.Field, v.Tag)
+				if v.Tag == "email" {
+					msg = fmt.Sprintf("%s is invalid", v.Field)
+				}
+				errors = append(errors, msg)
+			}
+		} else {
+			errors = append(errors, err.Error())
+		}
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "errors": errors})
+		return
+	}
+
+	db, err := ctrl.dbFactory.DBConnection()
+	if err != nil {
+		fmt.Println("err")
+		glog.Errorf("Failed to open db connection: %s", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
+		return
+	}
+	defer db.Close()
+
+	var user model.User
+	if db.Preload("Friends").First(&user, "email = ?", strings.ToLower(req.Email)).RecordNotFound() {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"success": false, "errors": []string{fmt.Sprintf("User with email %s does not exist", req.Email)}})
+		return
+	}
+
+	friends := make([]string, 0)
+	for _, friend := range user.Friends {
+		friends = append(friends, friend.Email)
+	}
+
+	resp := response.FriendListResponse{
+		Success: true,
+		Friends: friends,
+		Count:   len(friends),
+	}
+	c.JSON(http.StatusOK, resp)
 }

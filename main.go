@@ -83,6 +83,7 @@ func setupRouter() *gin.Engine {
 	api := router.Group("/api")
 	{
 		api.POST("/friend/connect", friendController.Connect)
+		api.POST("/friend/list", friendController.GetFriends)
 	}
 
 	return router
