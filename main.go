@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmgo/common/config"
+	"fmgo/common/data"
 	"fmt"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ var (
 
 	showVersion   bool
 	configuration config.Configuration
+	dbFactory     *data.DBFactory
 )
 
 func init() {
@@ -40,6 +42,7 @@ func init() {
 	}
 
 	configuration = *cfg
+	dbFactory = data.NewDbFactory(cfg.Database)
 }
 
 func setupRouter() *gin.Engine {

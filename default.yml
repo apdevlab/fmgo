@@ -3,3 +3,7 @@ server:
   addr: ":8080"         # listen address and port
   logDuration: 3        # log buffering duration in second
   shutdownTimeout: 5    # shutdown timeout duration in second
+
+database:
+  dbType: "mysql"       # possible value: mssql, mysql, postgres and sqlite
+  connectionUri: "root:root@tcp(localhost:3306)/fmgo?tls=skip-verify&autocommit=true&parseTime=true"
