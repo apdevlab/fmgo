@@ -168,3 +168,121 @@ func (ctrl *Controller) GetFriends(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, resp)
 }
+
+// GetCommons action to get commond friend list
+func (ctrl *Controller) GetCommons(c *gin.Context) {
+	// deserialize and validate POST data
+	var req request.GetCommonsRequest
+	var errors []string
+	if err := c.ShouldBindWith(&req, binding.JSON); err != nil {
+		ve, ok := err.(validator.ValidationErrors)
+		if ok {
+			for _, v := range ve {
+				msg := fmt.Sprintf("%s is %s", v.Field, v.Tag)
+				if v.Tag == "len" {
+					msg = fmt.Sprintf("%s %s should be %s", v.Field, v.Tag, v.Param)
+				}
+				errors = append(errors, msg)
+			}
+		} else {
+			errors = append(errors, err.Error())
+		}
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "errors": errors})
+		return
+	}
+
+	if strings.ToLower(strings.TrimSpace(req.Friends[0])) == strings.ToLower(strings.TrimSpace(req.Friends[1])) {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "errors": []string{"Could not get common friend list from same email address"}})
+		return
+	}
+
+	// validate email format
+	re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+	for _, email := range req.Friends {
+		if !re.MatchString(email) {
+			errors = append(errors, fmt.Sprintf("%s is an invalid email format", email))
+		}
+	}
+	if len(errors) > 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "errors": errors})
+		return
+	}
+
+	db, err := ctrl.dbFactory.DBConnection()
+	if err != nil {
+		fmt.Println("err")
+		glog.Errorf("Failed to open db connection: %s", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
+		return
+	}
+	defer db.Close()
+
+	var user1, user2 model.User
+	normalizeEmail1 := strings.ToLower(req.Friends[0])
+	if db.Preload("Friends").First(&user1, "email = ?", normalizeEmail1).RecordNotFound() {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"success": false, "errors": []string{fmt.Sprintf("User with email %s does not exist", normalizeEmail1)}})
+		return
+	}
+
+	normalizeEmail2 := strings.ToLower(req.Friends[1])
+	if db.Preload("Friends").First(&user2, "email = ?", normalizeEmail2).RecordNotFound() {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"success": false, "errors": []string{fmt.Sprintf("User with email %s does not exist", normalizeEmail2)}})
+		return
+	}
+
+	friends1 := make([]string, 0)
+	for _, friend := range user1.Friends {
+		friends1 = append(friends1, friend.Email)
+	}
+
+	friends2 := make([]string, 0)
+	for _, friend := range user2.Friends {
+		friends2 = append(friends2, friend.Email)
+	}
+
+	intersect := intersection(friends1, friends2)
+	resp := response.FriendListResponse{
+		Success: true,
+		Friends: intersect,
+		Count:   len(intersect),
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func intersection(a []string, b []string) []string {
+	result := make([]string, 0)
+
+	// interacting on the smallest list first can potentailly be faster...but not by much, worse case is the same
+	low, high := a, b
+	if len(a) > len(b) {
+		low = b
+		high = a
+	}
+
+	done := false
+	for i, l := range low {
+		for j, h := range high {
+			// get future index values
+			f1 := i + 1
+			f2 := j + 1
+			if l == h {
+				result = append(result, h)
+				if f1 < len(low) && f2 < len(high) {
+					// if the future values aren't the same then that's the end of the intersection
+					if low[f1] != high[f2] {
+						done = true
+					}
+				}
+				// we don't want to interate on the entire list everytime, so remove the parts we already looped on will make it faster each pass
+				high = high[:j+copy(high[j:], high[j+1:])]
+				break
+			}
+		}
+		// nothing in the future so we are done
+		if done {
+			break
+		}
+	}
+
+	return result
+}
