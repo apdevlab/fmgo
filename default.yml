@@ -1,0 +1,5 @@
+server:
+  mode: "debug"         # possible value: debug, test and release
+  addr: ":8080"         # listen address and port
+  logDuration: 3        # log buffering duration in second
+  shutdownTimeout: 5    # shutdown timeout duration in second
