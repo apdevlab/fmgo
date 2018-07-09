@@ -7,7 +7,8 @@ import (
 
 // Configuration struct consisting configuration object
 type Configuration struct {
-	Server ServerConfiguration
+	Server   ServerConfiguration
+	Database DatabaseConfiguration
 }
 
 // New create new instance of configuration object based on configuration file

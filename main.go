@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmgo/common/config"
+	"fmgo/common/data"
+	"fmgo/common/data/model"
+	"fmgo/module/friend"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,12 +23,16 @@ var (
 	appName = "fmgo"
 	version = "development"
 
-	showVersion   bool
-	configuration config.Configuration
+	showVersion      bool
+	runMigration     bool
+	configuration    config.Configuration
+	dbFactory        *data.DBFactory
+	friendController *friend.Controller
 )
 
 func init() {
 	flag.BoolVar(&showVersion, "version", false, "print version information")
+	flag.BoolVar(&runMigration, "migrate", false, "run db migration and then exit")
 	flag.Parse()
 
 	if showVersion {
@@ -40,6 +47,23 @@ func init() {
 	}
 
 	configuration = *cfg
+	dbFactory = data.NewDbFactory(cfg.Database)
+
+	if runMigration {
+		glog.Info("Running db migration")
+		db, err := dbFactory.DBConnection()
+		if err != nil {
+			glog.Fatalf("Failed to open database connection: %s", err)
+			panic(fmt.Errorf("Fatal error connecting to database: %s", err))
+		}
+		defer db.Close()
+
+		db.AutoMigrate(&model.User{})
+		glog.Info("Done running db migration")
+		os.Exit(0)
+	}
+
+	friendController = friend.NewController(dbFactory)
 }
 
 func setupRouter() *gin.Engine {
@@ -55,6 +79,11 @@ func setupRouter() *gin.Engine {
 			"serverTime": time.Now(),
 		})
 	})
+
+	api := router.Group("/api")
+	{
+		api.POST("/friend/connect", friendController.Connect)
+	}
 
 	return router
 }
