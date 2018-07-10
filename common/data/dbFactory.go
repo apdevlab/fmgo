@@ -26,7 +26,7 @@ func NewDbFactory(cfg config.DatabaseConfiguration) *DBFactory {
 func (f *DBFactory) DBConnection() (*gorm.DB, error) {
 	db, err := gorm.Open(f.config.DbType, f.config.ConnectionURI)
 	if err != nil {
-		glog.Fatalf("Failed to connect to database: %s", err)
+		glog.Errorf("Failed to connect to database: %s", err)
 		return nil, err
 	}
 

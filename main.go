@@ -34,7 +34,7 @@ var (
 
 func init() {
 	flag.BoolVar(&showVersion, "version", false, "print version information")
-	flag.BoolVar(&runMigration, "migrate", false, "run db migration and then exit")
+	flag.BoolVar(&runMigration, "migrate", false, "run db migration before starting app")
 	flag.Parse()
 
 	if showVersion {
@@ -45,7 +45,7 @@ func init() {
 	glog.V(2).Info("Initializing configuration...")
 	cfg, err := config.New()
 	if err != nil {
-		panic(fmt.Errorf("Failed to load configuration: %s", err))
+		glog.Fatalf("Failed to load configuration: %s", err)
 	}
 
 	configuration = *cfg
@@ -53,16 +53,22 @@ func init() {
 
 	if runMigration {
 		glog.Info("Running db migration")
-		db, err := dbFactory.DBConnection()
-		if err != nil {
-			glog.Fatalf("Failed to open database connection: %s", err)
-			panic(fmt.Errorf("Fatal error connecting to database: %s", err))
-		}
-		defer db.Close()
+		err := retry(5, 2*time.Second, func() error {
+			db, err := dbFactory.DBConnection()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
 
-		db.AutoMigrate(&model.User{})
+			db.AutoMigrate(&model.User{})
+			return nil
+		})
+
+		if err != nil {
+			glog.Fatalf("Failed to open database connection after 5 retries: %s", err)
+		}
+
 		glog.Info("Done running db migration")
-		os.Exit(0)
 	}
 
 	friendController = friend.NewController(dbFactory)
@@ -113,8 +119,7 @@ func main() {
 		glog.Infof("Starting %s server version %s at %s", appName, version, configuration.Server.Addr)
 		if err := srv.ListenAndServe(); err != nil {
 			if err.Error() != "http: Server closed" {
-				glog.Errorf("Failed to start server: %s", err)
-				panic(fmt.Errorf("Failed to start server: %s", err))
+				glog.Fatalf("Failed to start server: %s", err)
 			}
 		}
 	}()
@@ -134,4 +139,25 @@ func main() {
 	}
 
 	glog.Info("Server shutted down")
+}
+
+type stop struct {
+	error
+}
+
+func retry(attempts int, sleep time.Duration, fn func() error) error {
+	if err := fn(); err != nil {
+		if s, ok := err.(stop); ok {
+			return s.error
+		}
+
+		if attempts--; attempts > 0 {
+			time.Sleep(sleep)
+			return retry(attempts, 2*sleep, fn)
+		}
+
+		return err
+	}
+
+	return nil
 }
