@@ -7,6 +7,7 @@ import (
 	"fmgo/common/data"
 	"fmgo/common/data/model"
 	"fmgo/module/friend"
+	"fmgo/module/notification"
 	"fmt"
 	"net/http"
 	"os"
@@ -23,11 +24,12 @@ var (
 	appName = "fmgo"
 	version = "development"
 
-	showVersion      bool
-	runMigration     bool
-	configuration    config.Configuration
-	dbFactory        *data.DBFactory
-	friendController *friend.Controller
+	showVersion            bool
+	runMigration           bool
+	configuration          config.Configuration
+	dbFactory              *data.DBFactory
+	friendController       *friend.Controller
+	notificationController *notification.Controller
 )
 
 func init() {
@@ -64,6 +66,7 @@ func init() {
 	}
 
 	friendController = friend.NewController(dbFactory)
+	notificationController = notification.NewController(dbFactory)
 }
 
 func setupRouter() *gin.Engine {
@@ -85,6 +88,8 @@ func setupRouter() *gin.Engine {
 		api.POST("/friend/connect", friendController.Connect)
 		api.POST("/friend/list", friendController.GetFriends)
 		api.POST("/friend/common", friendController.GetCommons)
+
+		api.POST("/notification/subscribe", notificationController.Subscribe)
 	}
 
 	return router
