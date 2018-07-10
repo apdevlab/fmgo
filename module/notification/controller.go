@@ -6,6 +6,7 @@ import (
 	"fmgo/module/notification/request"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -52,7 +53,6 @@ func (ctrl *Controller) Subscribe(c *gin.Context) {
 
 	db, err := ctrl.dbFactory.DBConnection()
 	if err != nil {
-		fmt.Println("err")
 		glog.Errorf("Failed to open db connection: %s", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
 		return
@@ -139,7 +139,6 @@ func (ctrl *Controller) Block(c *gin.Context) {
 
 	db, err := ctrl.dbFactory.DBConnection()
 	if err != nil {
-		fmt.Println("err")
 		glog.Errorf("Failed to open db connection: %s", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
 		return
@@ -192,4 +191,119 @@ func (ctrl *Controller) Block(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// GetNotificationList action to get list of email that eligible to receive notification from given sender
+func (ctrl *Controller) GetNotificationList(c *gin.Context) {
+	var req request.GetNotificationRequest
+	var errors []string
+	if err := c.ShouldBindWith(&req, binding.JSON); err != nil {
+		ve, ok := err.(validator.ValidationErrors)
+		if ok {
+			for _, v := range ve {
+				msg := fmt.Sprintf("%s is %s", v.Field, v.Tag)
+				if v.Tag == "email" {
+					msg = fmt.Sprintf("%s is invalid", v.Field)
+				}
+				errors = append(errors, msg)
+			}
+		} else {
+			errors = append(errors, err.Error())
+		}
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "errors": errors})
+		return
+	}
+
+	db, err := ctrl.dbFactory.DBConnection()
+	if err != nil {
+		glog.Errorf("Failed to open db connection: %s", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
+		return
+	}
+	defer db.Close()
+
+	tx := db.Begin()
+	if tx.Error != nil {
+		glog.Errorf("Failed to create new db transaction: %s", tx.Error)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to start new db transaction"}})
+		return
+	}
+
+	var user model.User
+	normalizeEmail := strings.ToLower(req.Sender)
+	if tx.Preload("Friends").Preload("Notifications").First(&user, "email = ?", normalizeEmail).RecordNotFound() {
+		user = model.User{Email: normalizeEmail}
+		if err := tx.Create(&user).Error; err != nil {
+			tx.Rollback()
+			glog.Errorf("Failed to create user %s: %s", normalizeEmail, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to create new user"}})
+			return
+		}
+	}
+
+	// Get all user that has been blocking this sender
+	var blockingUsers []model.User
+	tx.Table("users").Select("users.*").Joins("left join blocks on blocks.user_id = users.id").Where("blocks.target_id = ?", user.ID).Scan(&blockingUsers)
+
+	// Get all mentioned user
+	re := regexp.MustCompile("[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*")
+	mentionedEmails := re.FindAllString(req.Text, -1)
+
+	recipients := make([]string, 0)
+
+	// Include all friends
+	for _, friend := range user.Friends {
+		if contains(recipients, friend.Email) {
+			continue
+		}
+
+		recipients = append(recipients, friend.Email)
+	}
+
+	// Include all subscriber
+	for _, subscriber := range user.Notifications {
+		if contains(recipients, subscriber.Email) {
+			continue
+		}
+
+		recipients = append(recipients, subscriber.Email)
+	}
+
+	// Include all mentioned email
+	for _, mention := range mentionedEmails {
+		normalizeMention := strings.ToLower(strings.TrimSpace(mention))
+		if contains(recipients, normalizeMention) {
+			continue
+		}
+
+		recipients = append(recipients, normalizeMention)
+	}
+
+	// exclude blocking user
+	for _, blockingUser := range blockingUsers {
+		for idx, recipient := range recipients {
+			if recipient == blockingUser.Email {
+				recipients = append(recipients[:idx], recipients[idx+1:]...)
+				break
+			}
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		glog.Errorf("Failed to commit db transaction: %s", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to commit db transaction"}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "recipients": recipients})
+}
+
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+
+	return false
 }

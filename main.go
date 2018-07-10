@@ -91,6 +91,7 @@ func setupRouter() *gin.Engine {
 
 		api.POST("/notification/subscribe", notificationController.Subscribe)
 		api.POST("/notification/block", notificationController.Block)
+		api.POST("/notification/list", notificationController.GetNotificationList)
 	}
 
 	return router

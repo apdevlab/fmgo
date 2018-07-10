@@ -67,7 +67,6 @@ func (ctrl *Controller) Connect(c *gin.Context) {
 
 	db, err := ctrl.dbFactory.DBConnection()
 	if err != nil {
-		fmt.Println("err")
 		glog.Errorf("Failed to open db connection: %s", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
 		return
@@ -150,7 +149,6 @@ func (ctrl *Controller) GetFriends(c *gin.Context) {
 
 	db, err := ctrl.dbFactory.DBConnection()
 	if err != nil {
-		fmt.Println("err")
 		glog.Errorf("Failed to open db connection: %s", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
 		return
@@ -217,7 +215,6 @@ func (ctrl *Controller) GetCommons(c *gin.Context) {
 
 	db, err := ctrl.dbFactory.DBConnection()
 	if err != nil {
-		fmt.Println("err")
 		glog.Errorf("Failed to open db connection: %s", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "errors": []string{"Failed to open db connection"}})
 		return
