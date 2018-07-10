@@ -84,7 +84,7 @@ func (ctrl *Controller) Connect(c *gin.Context) {
 	// create user if email does not exist yet
 	var user1, user2 model.User
 	normalizeEmail1 := strings.ToLower(req.Friends[0])
-	if tx.Preload("Friends").First(&user1, "email = ?", normalizeEmail1).RecordNotFound() {
+	if tx.First(&user1, "email = ?", normalizeEmail1).RecordNotFound() {
 		user1 = model.User{Email: normalizeEmail1}
 		if err := tx.Create(&user1).Error; err != nil {
 			tx.Rollback()
@@ -106,6 +106,13 @@ func (ctrl *Controller) Connect(c *gin.Context) {
 	}
 
 	if err := tx.Model(&user1).Association("Friends").Find(&user2).Error; err != nil && err.Error() == "record not found" {
+		// If one of them or both blocked each other, then friend connection will fail
+		if tx.Model(&user1).Association("Blocks").Find(&user2).Error == nil || tx.Model(&user2).Association("Blocks").Find(&user1).Error == nil {
+			tx.Rollback()
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "errors": []string{"Friend connection are being blocked"}})
+			return
+		}
+
 		tx.Model(&user1).Association("Friends").Append(&user2)
 		tx.Model(&user2).Association("Friends").Append(&user1)
 	}

@@ -90,6 +90,7 @@ func setupRouter() *gin.Engine {
 		api.POST("/friend/common", friendController.GetCommons)
 
 		api.POST("/notification/subscribe", notificationController.Subscribe)
+		api.POST("/notification/block", notificationController.Block)
 	}
 
 	return router
