@@ -101,3 +101,8 @@ func (ctrl *Controller) Subscribe(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// Block action to block notification and prevent further friend connection
+func (ctrl *Controller) Block(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
