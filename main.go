@@ -34,7 +34,7 @@ var (
 
 func init() {
 	flag.BoolVar(&showVersion, "version", false, "print version information")
-	flag.BoolVar(&runMigration, "migrate", false, "run db migration and then exit")
+	flag.BoolVar(&runMigration, "migrate", false, "run db migration before starting app")
 	flag.Parse()
 
 	if showVersion {
@@ -53,16 +53,24 @@ func init() {
 
 	if runMigration {
 		glog.Info("Running db migration")
-		db, err := dbFactory.DBConnection()
+		err := retry(10, time.Second, func() error {
+			db, err := dbFactory.DBConnection()
+			if err != nil {
+				glog.Errorf("Failed to open database connection: %s", err)
+				return err
+			}
+			defer db.Close()
+
+			db.AutoMigrate(&model.User{})
+			return nil
+		})
+
 		if err != nil {
 			glog.Fatalf("Failed to open database connection: %s", err)
 			panic(fmt.Errorf("Fatal error connecting to database: %s", err))
 		}
-		defer db.Close()
 
-		db.AutoMigrate(&model.User{})
 		glog.Info("Done running db migration")
-		os.Exit(0)
 	}
 
 	friendController = friend.NewController(dbFactory)
@@ -134,4 +142,25 @@ func main() {
 	}
 
 	glog.Info("Server shutted down")
+}
+
+type stop struct {
+	error
+}
+
+func retry(attempts int, sleep time.Duration, fn func() error) error {
+	if err := fn(); err != nil {
+		if s, ok := err.(stop); ok {
+			return s.error
+		}
+
+		if attempts--; attempts > 0 {
+			time.Sleep(sleep)
+			return retry(attempts, 2*sleep, fn)
+		}
+
+		return err
+	}
+
+	return nil
 }
