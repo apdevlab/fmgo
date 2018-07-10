@@ -89,6 +89,15 @@ func (ctrl *Controller) Subscribe(c *gin.Context) {
 		}
 	}
 
+	// If requestor and target are friends and target blocked requestor then subscription will fail
+	if err := tx.Model(&requestor).Association("Friends").Find(&target).Error; err == nil {
+		if err := tx.Model(&target).Association("Blocks").Find(&requestor).Error; err == nil {
+			tx.Rollback()
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "errors": []string{"Requestor is being blocked by target"}})
+			return
+		}
+	}
+
 	if err := tx.Model(&requestor).Association("Notifications").Find(&target).Error; err != nil && err.Error() == "record not found" {
 		tx.Model(&requestor).Association("Notifications").Append(&target)
 	}
