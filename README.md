@@ -47,9 +47,9 @@ You will need Go installed in your local machine
 By default the app will listen on all interface at port 8080. Here is the list of endpoint curently available
 
 * Ping endpoint `GET /ping`
-* Connect friend endpoint `POST /friend/connect`
-* List all friend endpoint `POST /friend/list`
-* List common friends endpoint `POST /friend/common`
-* Subscribe notification endpoint `POST /notification/subscribe`
-* Block notification endpoint `POST /notification/block`
-* Get subscriber list endpoint `POST /notification/list`
+* Connect friend endpoint `POST /api/friend/connect`
+* List all friend endpoint `POST /api/friend/list`
+* List common friends endpoint `POST /api/friend/common`
+* Subscribe notification endpoint `POST /api/notification/subscribe`
+* Block notification endpoint `POST /api/notification/block`
+* Get subscriber list endpoint `POST /api/notification/list`
