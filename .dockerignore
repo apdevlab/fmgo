@@ -1,0 +1,27 @@
+# Go Dep dependencies
+vendor/
+
+# Build output
+bin/
+publish/
+main
+debug
+*.exe
+
+# Editor files
+.vscode/
+.idea/
+
+# OS specific files
+.DS_Store
+
+# Custom configuration files
+.env
+.env.json
+.env.yml
+
+# Merge conflict temporary files
+*.orig
+
+# Logging folder
+logs/

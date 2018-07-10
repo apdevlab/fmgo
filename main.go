@@ -4,6 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmgo/common/config"
+	"fmgo/common/data"
+	"fmgo/common/data/model"
+	"fmgo/module/friend"
+	"fmgo/module/notification"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,12 +24,17 @@ var (
 	appName = "fmgo"
 	version = "development"
 
-	showVersion   bool
-	configuration config.Configuration
+	showVersion            bool
+	runMigration           bool
+	configuration          config.Configuration
+	dbFactory              *data.DBFactory
+	friendController       *friend.Controller
+	notificationController *notification.Controller
 )
 
 func init() {
 	flag.BoolVar(&showVersion, "version", false, "print version information")
+	flag.BoolVar(&runMigration, "migrate", false, "run db migration before starting app")
 	flag.Parse()
 
 	if showVersion {
@@ -36,10 +45,34 @@ func init() {
 	glog.V(2).Info("Initializing configuration...")
 	cfg, err := config.New()
 	if err != nil {
-		panic(fmt.Errorf("Failed to load configuration: %s", err))
+		glog.Fatalf("Failed to load configuration: %s", err)
 	}
 
 	configuration = *cfg
+	dbFactory = data.NewDbFactory(cfg.Database)
+
+	if runMigration {
+		glog.Info("Running db migration")
+		err := retry(5, 2*time.Second, func() error {
+			db, err := dbFactory.DBConnection()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			db.AutoMigrate(&model.User{})
+			return nil
+		})
+
+		if err != nil {
+			glog.Fatalf("Failed to open database connection after 5 retries: %s", err)
+		}
+
+		glog.Info("Done running db migration")
+	}
+
+	friendController = friend.NewController(dbFactory)
+	notificationController = notification.NewController(dbFactory)
 }
 
 func setupRouter() *gin.Engine {
@@ -55,6 +88,17 @@ func setupRouter() *gin.Engine {
 			"serverTime": time.Now(),
 		})
 	})
+
+	api := router.Group("/api")
+	{
+		api.POST("/friend/connect", friendController.Connect)
+		api.POST("/friend/list", friendController.GetFriends)
+		api.POST("/friend/common", friendController.GetCommons)
+
+		api.POST("/notification/subscribe", notificationController.Subscribe)
+		api.POST("/notification/block", notificationController.Block)
+		api.POST("/notification/list", notificationController.GetNotificationList)
+	}
 
 	return router
 }
@@ -75,8 +119,7 @@ func main() {
 		glog.Infof("Starting %s server version %s at %s", appName, version, configuration.Server.Addr)
 		if err := srv.ListenAndServe(); err != nil {
 			if err.Error() != "http: Server closed" {
-				glog.Errorf("Failed to start server: %s", err)
-				panic(fmt.Errorf("Failed to start server: %s", err))
+				glog.Fatalf("Failed to start server: %s", err)
 			}
 		}
 	}()
@@ -96,4 +139,25 @@ func main() {
 	}
 
 	glog.Info("Server shutted down")
+}
+
+type stop struct {
+	error
+}
+
+func retry(attempts int, sleep time.Duration, fn func() error) error {
+	if err := fn(); err != nil {
+		if s, ok := err.(stop); ok {
+			return s.error
+		}
+
+		if attempts--; attempts > 0 {
+			time.Sleep(sleep)
+			return retry(attempts, 2*sleep, fn)
+		}
+
+		return err
+	}
+
+	return nil
 }
