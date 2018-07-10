@@ -193,3 +193,8 @@ func (ctrl *Controller) Block(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// GetNotificationList action to get list of email that eligible to receive notification from given sender
+func (ctrl *Controller) GetNotificationList(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true, "recipients": []string{}})
+}
