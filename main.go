@@ -45,7 +45,7 @@ func init() {
 	glog.V(2).Info("Initializing configuration...")
 	cfg, err := config.New()
 	if err != nil {
-		panic(fmt.Errorf("Failed to load configuration: %s", err))
+		glog.Fatalf("Failed to load configuration: %s", err)
 	}
 
 	configuration = *cfg
@@ -53,10 +53,9 @@ func init() {
 
 	if runMigration {
 		glog.Info("Running db migration")
-		err := retry(10, time.Second, func() error {
+		err := retry(5, 2*time.Second, func() error {
 			db, err := dbFactory.DBConnection()
 			if err != nil {
-				glog.Errorf("Failed to open database connection: %s", err)
 				return err
 			}
 			defer db.Close()
@@ -66,8 +65,7 @@ func init() {
 		})
 
 		if err != nil {
-			glog.Fatalf("Failed to open database connection: %s", err)
-			panic(fmt.Errorf("Fatal error connecting to database: %s", err))
+			glog.Fatalf("Failed to open database connection after 5 retries: %s", err)
 		}
 
 		glog.Info("Done running db migration")
@@ -121,8 +119,7 @@ func main() {
 		glog.Infof("Starting %s server version %s at %s", appName, version, configuration.Server.Addr)
 		if err := srv.ListenAndServe(); err != nil {
 			if err.Error() != "http: Server closed" {
-				glog.Errorf("Failed to start server: %s", err)
-				panic(fmt.Errorf("Failed to start server: %s", err))
+				glog.Fatalf("Failed to start server: %s", err)
 			}
 		}
 	}()
